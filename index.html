@@ -140,6 +140,31 @@
     let startTime = 0, pausedElapsed = 0, rafId = null;
     let lastRemaining = null;
 
+    // --- 通知許可の確認 ---
+    if ('Notification' in window) {
+      Notification.requestPermission();
+    }
+
+    // --- Service Worker登録 ---
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+
+    function showNotification(title, body) {
+      if (Notification.permission === 'granted') {
+        navigator.serviceWorker.getRegistration().then(reg => {
+          if (reg) {
+            reg.showNotification(title, {
+              body,
+              icon: 'icon.png',
+              vibrate: [200, 100, 200],
+              tag: 'timer-alert'
+            });
+          }
+        });
+      }
+    }
+
     function formatTime(sec){
       sec = Math.max(0, Math.ceil(sec));
       const m = String(Math.floor(sec / 60)).padStart(2,'0');
@@ -181,6 +206,7 @@
       if(remain <= 0){
         alarmSound.currentTime = 0;
         alarmSound.play();
+        showNotification('タイマー終了', `${PHASES[phaseIndex].label} が終了しました！`);
         if(phaseIndex + 1 < PHASES.length){
           phaseIndex++;
           startTime = performance.now();
@@ -205,6 +231,17 @@
         lastRemaining = null;
         startTime = performance.now();
         pausedElapsed = 0;
+
+        // サイトを閉じても通知する予約
+        PHASES.forEach((phase, idx) => {
+          navigator.serviceWorker.ready.then(reg => {
+            reg.active.postMessage({
+              type: 'schedule',
+              title: `${phase.label} 終了`,
+              delay: (PHASES.slice(0, idx + 1).reduce((a, b) => a + b.seconds, 0)) * 1000
+            });
+          });
+        });
       } else if(paused){
         startTime = performance.now() - pausedElapsed * 1000;
         paused = false;
